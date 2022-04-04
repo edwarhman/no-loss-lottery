@@ -117,7 +117,10 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       }
    }
 
-   function performUpkeep(bytes calldata performData) external {}
+   function performUpkeep(bytes calldata performData) external {
+      (bool success, bytes memory result) = address(this).call(performData);
+      require(success == true, "function call has failed");
+   }
 
    function getCurrentReward() public {}
 
