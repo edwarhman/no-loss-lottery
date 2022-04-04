@@ -134,9 +134,14 @@ contract Lottery is Initializable, AccessControlUpgradeable {
 
    function claimLiquidity() internal {}
 
-   function generateLotteryNumer() internal {}
+   function generateLotteryNumber() internal {
 
-   function chooseWinner() internal {}
+   }
+
+   function chooseWinner() internal {
+      Round storage current = rounds[currentRoundId];
+      current.winner = current.tickets[lotteryResult]; 
+   }
 
    function getPrice(Asset asset) internal returns (uint256) {
       return 100056993;
