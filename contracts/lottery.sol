@@ -132,10 +132,19 @@ contract Lottery is Initializable, AccessControlUpgradeable {
 
    function investFunds() public {}
 
-   function claimLiquidity() internal {}
+   function claimLiquidity() internal {
+      Round storage current = rounds[currentRoundId];
+      uint total = 1050 * 10**8; // change this for ilendingPool withdraw
+      uint liquidity = total - current.funds;
+
+      current.reward = liquidity - liquidity * fee / 100;
+   
+      generateLotteryNumber();
+   }
 
    function generateLotteryNumber() internal {
 
+      lotteryResult = 1;
    }
 
    function chooseWinner() internal {
