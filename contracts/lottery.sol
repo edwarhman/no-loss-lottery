@@ -1,5 +1,4 @@
 pragma solidity ^0.8.0;
-
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
@@ -16,6 +15,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    Round[] public rounds;
    mapping(address => mapping(uint256 => uint256)) public participantsFundsByRound;
    uint256 public fee;
+   mapping(Asset => address) assetAdress;
 
    struct Round {
       uint256 startTime;
@@ -43,7 +43,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
    }
 
-   function participate(uint256 ticketsAmount, Asset payMethod) public {
+   function participate(uint256 ticketsAmount, Asset payMethod) public payable {
       Round storage round = rounds[currentRoundId];
       uint256 allowance = 1 ether; //for test, delete later
 
@@ -53,8 +53,14 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       );
       uint256 assetToUsd = getPrice(payMethod);
       uint256 totalToPay = assetToUsd * ticketPrice * ticketsAmount;
-      require(totalToPay <= allowance, "Token allowance is too low");
-      //transferFrom(msg.sender, totalToPay);
+      require(totalToPay <= allowance || totalToPay <= msg.value, "Token allowance is too low");
+      if (payMethod == Asset.ETH) {
+         if(totalToPay < msg.value) {
+            payable(msg.sender).call{value: msg.value - totalToPay}("");
+         }
+      } else {
+         //transferFrom(msg.sender, totalToPay);
+      }
       if (payMethod != round.rewardAsset) {
          totalToPay = swapTokens(payMethod, totalToPay);
       }
@@ -63,15 +69,36 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       for (uint256 i = 0; i < ticketsAmount; i++) {
          round.tickets.push(msg.sender);
       }
+
+      participantsFundsByRound[msg.sender][currentRoundId] += totalToPay;
    }
 
-   function withdraw() public {}
+   function withdraw() public {
+      if(hasRole(DEFAULT_ADMIN_ROLE, msg.sender)) {
+         for(uint i = 0; i < uint(Asset.ETH); i++) {
+            //IERC20(AssetAddress[Asset[i]]).transfer(msg.sender, chargesByAsset[Asset[i]]);
+         }
+      }
+
+      uint[] memory userFunds = new uint[](4);
+      for(uint i = 0; i < rounds.length; i++) {
+         if(participantsFundsByRound[msg.sender][i] > 0) {
+            userFunds[uint(rounds[i].rewardAsset)] += participantsFundsByRound[msg.sender][i];
+            if(msg.sender == rounds[i].winner) {
+               userFunds[uint(rounds[i].rewardAsset)] += rounds[i].reward;
+            }
+         }
+      }
+   }
+
 
    function checkUpkeep(bytes calldata checkdata)
-      public
-      view
-      returns (bool, bytes memory)
-   {}
+   public
+   view
+   returns (bool, bytes memory)
+   {
+      
+   }
 
    function performUpkeep(bytes calldata performData) external {}
 
