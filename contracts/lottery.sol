@@ -97,7 +97,24 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    view
    returns (bool, bytes memory)
    {
-      
+      Round storage current = rounds[currentRoundId];
+
+      if(currentRoundStatus == RoundStatus.collecting) {
+         if(collectTime + current.startTime < block.timestamp) {
+            return (true, abi.encodeWithSignature("investFunds()"));
+         }
+         return (false,"");
+      } else if (currentRoundStatus == RoundStatus.investing) {
+         if(collectTime + investTime + current.startTime < block.timestamp) {
+            return (true, abi.encodeWithSignature("claimLiquidity()"));
+         }
+         return (false,"");
+      } else {
+         if(lotteryResult > 0) {
+            return (true, abi.encodeWithSignature("chooseWinner()"));
+         }
+         return (false,"");
+      }
    }
 
    function performUpkeep(bytes calldata performData) external {}
@@ -113,6 +130,8 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    function investFunds() public {}
 
    function claimLiquidity() internal {}
+
+   function generateLotteryNumer() internal {}
 
    function chooseWinner() internal {}
 
