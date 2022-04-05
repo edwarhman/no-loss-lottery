@@ -11,7 +11,7 @@ describe("No Loss Lottery", ()=> {
    };
 
    before(async ()=> {
-      Lottery = await ethers.getContractFactory("Lottery");
+      Lottery = await ethers.getContractFactory("LotteryTest");
    });
 
    beforeEach(async ()=> {
@@ -65,11 +65,12 @@ describe("No Loss Lottery", ()=> {
 
       });
 
-      it("Should not allow to participate when round status is complete", async()=> {
+      it("Should not allow to participate when round status is finished", async()=> {
+         await lottery.finishRound();
          await expect(lottery.participate(10, Asset.DAI))
          .to
          .be
-         .revertedWith("Cannot participate, round status is completed");
+         .revertedWith("Cannot participate, round status is finished");
       });
    });
    
