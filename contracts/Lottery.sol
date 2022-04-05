@@ -48,16 +48,18 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       rounds.push();
       rounds[0].startTime = block.timestamp;
       rounds[0].rewardAsset = Asset.USDC;
+      
+      currentRoundStatus = RoundStatus.collecting;
+
+      rounds.push();
+      rounds[1].rewardAsset = Asset.USDC;
 
       ticketPrice = 10; //10 usd
    }
 
    function participate(uint256 ticketsAmount, Asset payMethod) public payable {
-      Round storage round = rounds[
-         currentRoundStatus == RoundStatus.collecting
-            ? currentRoundId
-            : currentRoundId + 1
-      ];
+      Round storage round = rounds[currentRoundId];
+
       uint256 allowance = 1 ether; //for test, delete later
 
       require(
@@ -82,6 +84,10 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       }
       if (payMethod != round.rewardAsset) {
          totalToPay = swapTokens(payMethod, totalToPay);
+      }
+
+      if(currentRoundStatus == RoundStatus.investing) {
+         round = rounds[currentRoundId + 1];
       }
       round.funds += totalToPay;
 
@@ -163,7 +169,9 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       return amountIn;
    }
 
-   function investFunds() public {}
+   function investFunds() public {
+      currentRoundStatus = RoundStatus.investing;
+   }
 
    function claimLiquidity() internal {
       Round storage current = rounds[currentRoundId];
