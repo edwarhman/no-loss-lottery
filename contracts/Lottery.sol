@@ -3,8 +3,8 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 
 contract Lottery is Initializable, AccessControlUpgradeable {
-   uint256 public collectTime = 2;
-   uint256 public investTime = 5;
+   uint256 public collectTime;
+   uint256 public investTime;
 
    uint256 public currentRoundId;
    RoundStatus public currentRoundStatus;
@@ -40,7 +40,13 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    }
 
    function initialize() public initializer {
+      collectTime = 2 days;
+      investTime = 5 days;
       _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
+
+      rounds.push();
+      rounds[0].startTime = block.timestamp;
+      rounds[0].rewardAsset = Asset.USDC;
    }
 
    function participate(uint256 ticketsAmount, Asset payMethod) public payable {
