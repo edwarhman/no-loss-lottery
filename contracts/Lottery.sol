@@ -29,7 +29,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    enum RoundStatus {
       collecting,
       investing,
-      completed
+      finished
    }
 
    enum Asset {
@@ -62,8 +62,8 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       uint256 allowance = 1 ether; //for test, delete later
 
       require(
-         currentRoundStatus != RoundStatus.completed,
-         "Cannot participate, round status is completed"
+         currentRoundStatus != RoundStatus.finished,
+         "Cannot participate, round status is finished"
       );
       uint256 assetToUsd = getPrice(payMethod);
       uint256 totalToPay = assetToUsd * ticketPrice * ticketsAmount;
@@ -132,7 +132,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       ) {
          return (true, abi.encodeWithSignature("claimLiquidity()"));
       } else if (lotteryResult > 0) {
-         return (true, abi.encodeWithSignature("chooseWinner()"));
+         return (true, abi.encodeWithSignature("finishRound()"));
       }
       return (false, "");
    }
@@ -151,7 +151,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       ) {
          claimLiquidity();
       } else if (lotteryResult > 0) {
-         chooseWinner();
+         finishRound();
       }
    }
 
@@ -183,9 +183,11 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       lotteryResult = 100000000;
    }
 
-   function chooseWinner() internal {
+   function finishRound() internal {
       Round storage current = rounds[currentRoundId];
       current.winner = current.tickets[lotteryResult];
+
+      currentRoundStatus = RoundStatus.finished;
    }
 
    function getPrice(Asset asset) internal returns (uint256) {
