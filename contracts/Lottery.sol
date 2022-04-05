@@ -161,4 +161,8 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    function getPrice(Asset asset) internal returns (uint256) {
       return 100056993;
    }
+
+   function getTicketOwner(uint ticket) public view returns(address){
+      return rounds[currentRoundId].tickets[ticket];
+   }
 }
