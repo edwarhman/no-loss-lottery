@@ -13,18 +13,17 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    uint256 public lotteryResult;
    bool public paused;
    Round[] public rounds;
-   mapping(address => mapping(uint256 => uint256))
-      public participantsFundsByRound;
    uint256 public fee;
    mapping(Asset => address) assetAdress;
 
    struct Round {
       uint256 startTime;
-      address[] tickets;
       uint256 funds;
       address winner;
       Asset rewardAsset;
       uint256 reward;
+      address[] tickets;
+      mapping(address=>uint) participantFunds;
    }
 
    enum RoundStatus {
@@ -58,7 +57,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    }
 
    function participate(uint256 ticketsAmount, Asset payMethod) public payable {
-      Round storage round = rounds[currentRoundId];
+      Round storage round = rounds[currentRoundStatus == RoundStatus.collecting? currentRoundId : currentRoundId + 1];
 
       uint256 allowance = 1 ether; //for test, delete later
 
@@ -86,16 +85,13 @@ contract Lottery is Initializable, AccessControlUpgradeable {
          totalToPay = swapTokens(payMethod, totalToPay);
       }
 
-      if(currentRoundStatus == RoundStatus.investing) {
-         round = rounds[currentRoundId + 1];
-      }
       round.funds += totalToPay;
 
       for (uint256 i = 0; i < ticketsAmount; i++) {
          round.tickets.push(msg.sender);
       }
 
-      participantsFundsByRound[msg.sender][currentRoundId] += totalToPay;
+      round.participantFunds[msg.sender] += totalToPay;
    }
 
    function withdraw() public {
@@ -107,10 +103,10 @@ contract Lottery is Initializable, AccessControlUpgradeable {
 
       uint256[] memory userFunds = new uint256[](4);
       for (uint256 i = 0; i < rounds.length; i++) {
-         if (participantsFundsByRound[msg.sender][i] > 0) {
+         if (rounds[i].participantFunds[msg.sender] > 0) {
             userFunds[
                uint256(rounds[i].rewardAsset)
-            ] += participantsFundsByRound[msg.sender][i];
+            ] += rounds[i].participantFunds[msg.sender];
             if (msg.sender == rounds[i].winner) {
                userFunds[uint256(rounds[i].rewardAsset)] += rounds[i].reward;
             }
@@ -197,6 +193,12 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    }
 
    function getTicketOwner(uint256 ticket) public view returns (address) {
+      require(ticket < rounds[currentRoundId].tickets.length, "Specified ticket not found"); 
       return rounds[currentRoundId].tickets[ticket];
+   }
+
+   function getParticipantFunds(uint roundId) public view returns(uint) {
+      require(roundId < rounds.length, "Specified round not found");
+      return rounds[roundId].participantFunds[msg.sender];
    }
 }
