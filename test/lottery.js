@@ -138,6 +138,9 @@ describe("No Loss Lottery", () => {
       });
 
       it("Should allow to generate a random number", async()=> {
+         console.log(vrf2Consumer.address);
+         await vrfCordinator.addConsumer(0, vrf2Consumer.address);
+         console.log(await vrfCordinator.getSubscription(0));
          
       });
    });
