@@ -11,7 +11,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    RoundStatus public currentRoundStatus;
    uint256 public ticketPrice;
    mapping(Asset => uint256) public chargesByAsset;
-   uint256 public lotteryResult;
+   uint256 public winningTicket;
    bool public paused;
    Round[] public rounds;
    uint256 public fee;
@@ -126,15 +126,15 @@ contract Lottery is Initializable, AccessControlUpgradeable {
 
       if (
          currentRoundStatus == RoundStatus.collecting &&
-         collectTime + current.startTime < block.timestamp
+         collectTime + current.startTime <=block.timestamp
       ) {
          return (true, "");
       } else if (
          currentRoundStatus == RoundStatus.investing &&
-         collectTime + investTime + current.startTime < block.timestamp
+         collectTime + investTime + current.startTime <=block.timestamp
       ) {
          return (true, "");
-      } else if (lotteryResult > 0) {
+      } else if (winningTicket > 0) {
          return (true, "");
       }
       return (false, "");
@@ -145,16 +145,17 @@ contract Lottery is Initializable, AccessControlUpgradeable {
 
       if (
          currentRoundStatus == RoundStatus.collecting &&
-         collectTime + current.startTime < block.timestamp
+         collectTime + current.startTime <=block.timestamp
       ) {
          investFunds();
       } else if (
          currentRoundStatus == RoundStatus.investing &&
-         collectTime + investTime + current.startTime < block.timestamp
+         collectTime + investTime + current.startTime <=block.timestamp
       ) {
-         claimLiquidity();
-      } else if (lotteryResult > 0) {
          _finishRound();
+      } else if (currentRoundStatus ==  RoundStatus.finished && winningTicket > 0) {
+         _setWinner();
+         _startNextRound();
       }
    }
 
@@ -179,18 +180,27 @@ contract Lottery is Initializable, AccessControlUpgradeable {
 
       current.reward = liquidity - (liquidity * fee) / 100;
 
-      generateLotteryNumber();
    }
 
    function generateLotteryNumber() internal {
-      lotteryResult = 100000000;
+      winningTicket = 100000000;
    }
 
    function _finishRound() internal {
-      Round storage current = rounds[currentRoundId];
-      //current.winner = current.tickets[lotteryResult];
+      claimLiquidity();
+      generateLotteryNumber();
 
       currentRoundStatus = RoundStatus.finished;
+   }
+
+   function _startNextRound() internal {
+
+      currentRoundStatus = RoundStatus.collecting;
+   }
+
+   function _setWinner() internal {
+      Round storage current = rounds[currentRoundId];
+      //current.winner = current.tickets[winningTicket];
    }
 
    function getPrice(Asset asset) internal returns (uint256) {
