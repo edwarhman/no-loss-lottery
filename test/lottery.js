@@ -9,9 +9,14 @@ describe("No Loss Lottery", ()=> {
       USDT: 2,
       ETH: 3,
    };
+   let RoundStatus = {
+      collecting: 0,
+      investing: 1,
+      finished: 2,
+   };
 
    before(async ()=> {
-      Lottery = await ethers.getContractFactory("Lottery");
+      Lottery = await ethers.getContractFactory("LotteryTest");
    });
 
    beforeEach(async ()=> {
@@ -42,34 +47,21 @@ describe("No Loss Lottery", ()=> {
          .to
          .equal(owner.address);
 
-         expect(await lottery.participantsFundsByRound(owner.address, 0))
+         expect(await lottery.getParticipantFunds(0))
          .to
          .above(0);
 
          expect((await lottery.rounds(0))[1])
          .to
          .above(0);
+
       });
 
       it("Should allow the user to participate in the next lottery if current is investing funds", async()=> {
          await lottery.investFunds();
-
-         console.log(await lottery.rounds(0));
          await lottery.participate(10, Asset.ETH, {value: ethers.utils.parseEther("1")});
 
-         expect(await lottery.getTicketOwner(0))
-         .to
-         .equal(owner.address);
-
-         expect(await lottery.getTicketOwner(9))
-         .to
-         .equal(owner.address);
-
-         console.log(await lottery.rounds(0));
-         console.log(await lottery.participantsFundsByRound(owner.address, 0));
-
-
-         expect(await lottery.participantsFundsByRound(owner.address, 1))
+         expect(await lottery.getParticipantFunds(1))
          .to
          .above(0);
 
@@ -77,14 +69,70 @@ describe("No Loss Lottery", ()=> {
          .to
          .above(0);
 
-
       });
 
-      it("Should not allow to participate when round status is complete", async()=> {
+      it("Should not allow to participate when round status is finished", async()=> {
+         await lottery.finishRound();
          await expect(lottery.participate(10, Asset.DAI))
          .to
          .be
-         .revertedWith("Cannot participate, round status is completed");
+         .revertedWith("Cannot participate, round status is finished");
+      });
+
+      it("Should not allow to participate if there is not sufficient allowance", async ()=> {
+         await expect(lottery.participate(10, Asset.ETH))
+         .to
+         .be
+         .revertedWith("Token allowance is too low");
+      });
+   });
+
+   describe("Upkeep functions assertions", ()=> {
+      let day= 60 * 60 * 24;
+      let collectTime = day * 2;
+      let investTime = day * 5;
+
+      it("Should check round status property and perform functionst property", async()=> {
+         let result;
+
+         await network.provider.send("evm_increaseTime", [collectTime]); 
+         await network.provider.send("evm_mine");
+
+         result = await lottery.checkUpkeep("0x");
+
+         if(result) {
+            await lottery.performUpkeep("0x");
+         }
+
+         expect(await lottery.currentRoundStatus())
+         .to
+         .equal(RoundStatus.investing);
+
+         await network.provider.send("evm_increaseTime", [collectTime + investTime]); 
+         await network.provider.send("evm_mine");
+
+         result = await lottery.checkUpkeep("0x");
+
+         if(result) {
+            await lottery.performUpkeep("0x");
+         }
+
+         expect(await lottery.currentRoundStatus())
+         .to
+         .equal(RoundStatus.finished);
+
+         result = await lottery.checkUpkeep("0x");
+
+         if(result) {
+            await lottery.performUpkeep("0x");
+         }
+
+         expect(await lottery.currentRoundStatus())
+         .to
+         .equal(RoundStatus.collecting);
+
+         
+
       });
    });
    
