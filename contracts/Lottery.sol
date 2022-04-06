@@ -1,6 +1,7 @@
 pragma solidity ^0.8.0;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import "hardhat/console.sol";
 
 contract Lottery is Initializable, AccessControlUpgradeable {
    uint256 public collectTime;
@@ -68,7 +69,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       uint256 assetToUsd = getPrice(payMethod);
       uint256 totalToPay = assetToUsd * ticketPrice * ticketsAmount;
       require(
-         totalToPay <= allowance || totalToPay <= msg.value,
+         (totalToPay <= allowance && payMethod != Asset.ETH) || totalToPay <= msg.value,
          "Token allowance is too low"
       );
       if (payMethod == Asset.ETH) {
@@ -114,30 +115,32 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       }
    }
 
-   function checkUpkeep(bytes calldata checkdata)
+   function checkUpkeep(bytes calldata /*checkdata*/)
       public
       view
       returns (bool, bytes memory)
    {
       Round storage current = rounds[currentRoundId];
+      console.log(block.timestamp);
+      console.log(collectTime + current.startTime);
 
       if (
          currentRoundStatus == RoundStatus.collecting &&
          collectTime + current.startTime < block.timestamp
       ) {
-         return (true, abi.encodeWithSignature("investFunds()"));
+         return (true, "");
       } else if (
          currentRoundStatus == RoundStatus.investing &&
          collectTime + investTime + current.startTime < block.timestamp
       ) {
-         return (true, abi.encodeWithSignature("claimLiquidity()"));
+         return (true, "");
       } else if (lotteryResult > 0) {
-         return (true, abi.encodeWithSignature("finishRound()"));
+         return (true, "");
       }
       return (false, "");
    }
 
-   function performUpkeep(bytes calldata performData) external {
+   function performUpkeep(bytes calldata /*performData*/) external {
       Round storage current = rounds[currentRoundId];
 
       if (
@@ -151,7 +154,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       ) {
          claimLiquidity();
       } else if (lotteryResult > 0) {
-         finishRound();
+         _finishRound();
       }
    }
 
@@ -183,9 +186,9 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       lotteryResult = 100000000;
    }
 
-   function finishRound() internal {
+   function _finishRound() internal {
       Round storage current = rounds[currentRoundId];
-      current.winner = current.tickets[lotteryResult];
+      //current.winner = current.tickets[lotteryResult];
 
       currentRoundStatus = RoundStatus.finished;
    }
