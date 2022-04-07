@@ -5,6 +5,8 @@ pragma solidity ^0.8.7;
 import "@chainlink/contracts/src/v0.8/interfaces/LinkTokenInterface.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
 import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+import "hardhat/console.sol";
+import "./Lottery.sol";
 
 contract VRFv2Consumer is VRFConsumerBaseV2 {
   VRFCoordinatorV2Interface COORDINATOR;
@@ -39,13 +41,17 @@ contract VRFv2Consumer is VRFConsumerBaseV2 {
 
   // For this example, retrieve 2 random values in one request.
   // Cannot exceed VRFCoordinatorV2.MAX_NUM_WORDS.
-  uint32 numWords =  2;
+  uint32 numWords =  1;
 
   uint256[] public s_randomWords;
   uint256 public s_requestId;
   address s_owner;
 
-  constructor(uint64 subscriptionId) VRFConsumerBaseV2(vrfCoordinator) {
+  Lottery public lottery;
+  uint numberRange;
+
+  constructor(uint64 subscriptionId, address _vrfCoordinator) VRFConsumerBaseV2(_vrfCoordinator) {
+    vrfCoordinator = _vrfCoordinator;
     COORDINATOR = VRFCoordinatorV2Interface(vrfCoordinator);
     LINKTOKEN = LinkTokenInterface(link);
     s_owner = msg.sender;
@@ -53,7 +59,7 @@ contract VRFv2Consumer is VRFConsumerBaseV2 {
   }
 
   // Assumes the subscription is funded sufficiently.
-  function requestRandomWords() external onlyOwner {
+  function requestRandomWords(uint _numberRange) external onlyAllowed {
     // Will revert if subscription is not set and funded.
     s_requestId = COORDINATOR.requestRandomWords(
       keyHash,
@@ -62,6 +68,8 @@ contract VRFv2Consumer is VRFConsumerBaseV2 {
       callbackGasLimit,
       numWords
     );
+
+    numberRange = _numberRange + 1;
   }
   
   function fulfillRandomWords(
@@ -69,10 +77,21 @@ contract VRFv2Consumer is VRFConsumerBaseV2 {
     uint256[] memory randomWords
   ) internal override {
     s_randomWords = randomWords;
+
+    uint winnerTicket = (randomWords[0] % numberRange) + 1;
+    lottery.setWinningTicket(winnerTicket);
   }
 
-  modifier onlyOwner() {
-    require(msg.sender == s_owner);
+  function setCoordinator(address _vrfCoordinator) public {
+     COORDINATOR = VRFCoordinatorV2Interface(_vrfCoordinator);
+  }
+
+  function setLotteryContract(Lottery _lottery) public {
+     lottery = _lottery;
+  }
+
+  modifier onlyAllowed() {
+    require(msg.sender == s_owner || msg.sender == address(lottery));
     _;
   }
 }
