@@ -4,7 +4,6 @@ import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol"
 import "hardhat/console.sol";
 import "./VRFv2Consumer.sol";
 
-
 contract Lottery is Initializable, AccessControlUpgradeable {
    uint256 public collectTime;
    uint256 public investTime;
@@ -27,7 +26,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       Asset rewardAsset;
       uint256 reward;
       address[] tickets;
-      mapping(address=>uint) participantFunds;
+      mapping(address => uint256) participantFunds;
    }
 
    enum RoundStatus {
@@ -54,7 +53,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       rounds[0].startTime = block.timestamp;
       rounds[0].rewardAsset = Asset.USDC;
       rounds[0].tickets.push(address(0));
-      
+
       currentRoundStatus = RoundStatus.collecting;
 
       rounds.push();
@@ -64,8 +63,15 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       ticketPrice = 10; //10 usd
    }
 
-   function participate(uint256 ticketsAmount, Asset payMethod) public payable {
-      Round storage round = rounds[currentRoundStatus == RoundStatus.collecting? currentRoundId : currentRoundId + 1];
+   function participate(uint256 ticketsAmount, Asset payMethod)
+      public
+      payable
+   {
+      Round storage round = rounds[
+         currentRoundStatus == RoundStatus.collecting
+            ? currentRoundId
+            : currentRoundId + 1
+      ];
 
       uint256 allowance = 1 ether; //for test, delete later
 
@@ -76,7 +82,8 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       uint256 assetToUsd = getPrice(payMethod);
       uint256 totalToPay = assetToUsd * ticketPrice * ticketsAmount;
       require(
-         (totalToPay <= allowance && payMethod != Asset.ETH) || totalToPay <= msg.value,
+         (totalToPay <= allowance && payMethod != Asset.ETH) ||
+            totalToPay <= msg.value,
          "Token allowance is too low"
       );
       if (payMethod == Asset.ETH) {
@@ -112,30 +119,29 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       uint256[] memory userFunds = new uint256[](4);
       for (uint256 i = 0; i < rounds.length; i++) {
          if (rounds[i].participantFunds[msg.sender] > 0) {
-            userFunds[
-               uint256(rounds[i].rewardAsset)
-            ] += rounds[i].participantFunds[msg.sender];
+            userFunds[uint256(rounds[i].rewardAsset)] += rounds[i]
+               .participantFunds[msg.sender];
             if (msg.sender == rounds[i].winner) {
-               userFunds[uint256(rounds[i].rewardAsset)] += rounds[i].reward;
+               userFunds[uint256(rounds[i].rewardAsset)] += rounds[i]
+                  .reward;
             }
          }
       }
    }
 
-   function checkUpkeep(bytes calldata /*checkdata*/)
-      public
-      view
-      returns (bool, bytes memory)
-   {
+   function checkUpkeep(
+      bytes calldata /*checkdata*/
+   ) public view returns (bool, bytes memory) {
       Round storage current = rounds[currentRoundId];
       if (
          currentRoundStatus == RoundStatus.collecting &&
-         collectTime + current.startTime <=block.timestamp
+         collectTime + current.startTime <= block.timestamp
       ) {
          return (true, "");
       } else if (
          currentRoundStatus == RoundStatus.investing &&
-         collectTime + investTime + current.startTime <=block.timestamp
+         collectTime + investTime + current.startTime <=
+         block.timestamp
       ) {
          return (true, "");
       } else if (winningTicket > 0) {
@@ -144,20 +150,26 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       return (false, "");
    }
 
-   function performUpkeep(bytes calldata /*performData*/) external {
+   function performUpkeep(
+      bytes calldata /*performData*/
+   ) external {
       Round storage current = rounds[currentRoundId];
 
       if (
          currentRoundStatus == RoundStatus.collecting &&
-         collectTime + current.startTime <=block.timestamp
+         collectTime + current.startTime <= block.timestamp
       ) {
          investFunds();
       } else if (
          currentRoundStatus == RoundStatus.investing &&
-         collectTime + investTime + current.startTime <=block.timestamp
+         collectTime + investTime + current.startTime <=
+         block.timestamp
       ) {
          _finishRound();
-      } else if (currentRoundStatus ==  RoundStatus.finished && winningTicket > 0) {
+      } else if (
+         currentRoundStatus == RoundStatus.finished &&
+         winningTicket > 0
+      ) {
          _setWinner();
          _startNextRound();
       }
@@ -169,7 +181,10 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       paused = _paused;
    }
 
-   function swapTokens(Asset from, uint256 amountIn) public returns (uint256) {
+   function swapTokens(Asset from, uint256 amountIn)
+      public
+      returns (uint256)
+   {
       return amountIn;
    }
 
@@ -188,7 +203,9 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    function generateLotteryNumber() internal {
       winningTicket = 100000000;
 
-      vrf2Consumer.requestRandomWords(rounds[currentRoundId].tickets.length);
+      vrf2Consumer.requestRandomWords(
+         rounds[currentRoundId].tickets.length
+      );
    }
 
    function _finishRound() internal {
@@ -199,7 +216,6 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    }
 
    function _startNextRound() internal {
-
       currentRoundStatus = RoundStatus.collecting;
    }
 
@@ -212,12 +228,23 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       return asset == Asset.ETH ? 27 * 10**13 : 100056993;
    }
 
-   function getTicketOwner(uint256 ticket) public view returns (address) {
-      require(ticket < rounds[currentRoundId].tickets.length, "Specified ticket not found"); 
+   function getTicketOwner(uint256 ticket)
+      public
+      view
+      returns (address)
+   {
+      require(
+         ticket < rounds[currentRoundId].tickets.length,
+         "Specified ticket not found"
+      );
       return rounds[currentRoundId].tickets[ticket];
    }
 
-   function getParticipantFunds(uint roundId) public view returns(uint) {
+   function getParticipantFunds(uint256 roundId)
+      public
+      view
+      returns (uint256)
+   {
       require(roundId < rounds.length, "Specified round not found");
       return rounds[roundId].participantFunds[msg.sender];
    }
@@ -226,8 +253,11 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       vrf2Consumer = _consumer;
    }
 
-   function setWinningTicket(uint _winner) public {
-      require(msg.sender == address(vrf2Consumer), "tx sender is not the allowed vrf consumer");
+   function setWinningTicket(uint256 _winner) public {
+      require(
+         msg.sender == address(vrf2Consumer),
+         "tx sender is not the allowed vrf consumer"
+      );
       winningTicket = _winner;
    }
 }
