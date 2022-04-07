@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const provider = waffle.provider;
 
 describe("No Loss Lottery", () => {
-   let Lottery, lottery, VRFv2Consumer, vrf2Consumer, vrfCordinator, owner, user;
+   let Lottery, lottery, VRFv2Consumer, vrf2Consumer, CoordinatorMock, vrfCordinator, owner, user;
    let Asset = {
       DAI: 0,
       USDC: 1,
@@ -15,7 +15,7 @@ describe("No Loss Lottery", () => {
       finished: 2,
    };
 
-   let VRF_CORDINATOR = "0x6168499c0cFfCaCD319c818142124B7A15E857ab";
+   const subId = 1;
 
 
    before(async () => {
@@ -27,11 +27,19 @@ describe("No Loss Lottery", () => {
 
       Lottery = await ethers.getContractFactory("LotteryTest");
       VRFv2Consumer = await ethers.getContractFactory("VRFv2Consumer");
+      CoordinatorMock = await ethers.getContractFactory("CoordinatorMock");
    });
 
    beforeEach(async () => {
       [owner, user] = await ethers.getSigners();
-      lottery = await upgrades.deployProxy(Lottery);
+      vrfCordinator = await CoordinatorMock.deploy(0, 0);
+      vrf2Consumer = await VRFv2Consumer.deploy(subId, vrfCordinator.address);
+      lottery = await upgrades.deployProxy(Lottery, [vrf2Consumer.address]);
+
+      await vrf2Consumer.setLotteryContract(lottery.address);
+      await vrfCordinator.createSubscription();
+      await vrfCordinator.fundSubscription(subId, 100000);
+
    });
 
    describe("Deployment", () => {
@@ -48,9 +56,9 @@ describe("No Loss Lottery", () => {
             value: ethers.utils.parseEther("1"),
          });
 
-         expect(await lottery.getTicketOwner(0)).to.equal(owner.address);
+         expect(await lottery.getTicketOwner(1)).to.equal(owner.address);
 
-         expect(await lottery.getTicketOwner(9)).to.equal(owner.address);
+         expect(await lottery.getTicketOwner(10)).to.equal(owner.address);
 
          expect(await lottery.getParticipantFunds(0)).to.above(0);
 
@@ -87,7 +95,7 @@ describe("No Loss Lottery", () => {
       let collectTime = day * 2;
       let investTime = day * 5;
 
-      it("Should check round status property and perform functionst property", async () => {
+      it("Should check round status and perform functions property", async () => {
          let result;
 
          await network.provider.send("evm_increaseTime", [collectTime]);
@@ -112,6 +120,7 @@ describe("No Loss Lottery", () => {
 
          if (result) {
             await lottery.performUpkeep("0x");
+            await vrfCordinator.fulfillRandomWords(1, vrf2Consumer.address);
          }
 
          expect(await lottery.currentRoundStatus()).to.equal(
@@ -131,17 +140,25 @@ describe("No Loss Lottery", () => {
    });
 
    describe("Generate winning number", ()=> {
+
       beforeEach(async()=> {
          user = await ethers.getSigners(process.env.PUBLIC_KEY);
-         vrf2Consumer = await VRFv2Consumer.deploy(process.env.VRF_ID);
-         vrfCordinator = await ethers.getContractAt("IVRF",VRF_CORDINATOR);
       });
 
-      it("Should allow to generate a random number", async()=> {
-         console.log(vrf2Consumer.address);
-         await vrfCordinator.addConsumer(0, vrf2Consumer.address);
-         console.log(await vrfCordinator.getSubscription(0));
-         
+      it("Should allow to generate a random winning ticket", async()=> {
+         let ticketsAmount = 10;
+
+         await lottery.participate(ticketsAmount, Asset.ETH, {value: ethers.utils.parseEther("1")});
+         await lottery.investFunds();
+         await lottery.finishRound();
+         await vrfCordinator.fulfillRandomWords(1, vrf2Consumer.address);
+
+         expect(await lottery.winningTicket())
+         .to
+         .be
+         .within(0, ticketsAmount);
+
+
       });
    });
 });
