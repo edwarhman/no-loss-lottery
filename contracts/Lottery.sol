@@ -2,6 +2,8 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "hardhat/console.sol";
+import "./VRFv2Consumer.sol";
+
 
 contract Lottery is Initializable, AccessControlUpgradeable {
    uint256 public collectTime;
@@ -15,6 +17,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    bool public paused;
    Round[] public rounds;
    uint256 public fee;
+   VRFv2Consumer public vrf2Consumer;
    mapping(Asset => address) assetAdress;
 
    struct Round {
@@ -40,19 +43,23 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       ETH
    }
 
-   function initialize() public initializer {
+   function initialize(VRFv2Consumer _consumer) public initializer {
       collectTime = 2 days;
       investTime = 5 days;
       _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
+      vrf2Consumer = _consumer;
+
       rounds.push();
       rounds[0].startTime = block.timestamp;
       rounds[0].rewardAsset = Asset.USDC;
+      rounds[0].tickets.push(address(0));
       
       currentRoundStatus = RoundStatus.collecting;
 
       rounds.push();
       rounds[1].rewardAsset = Asset.USDC;
+      rounds[1].tickets.push(address(0));
 
       ticketPrice = 10; //10 usd
    }
@@ -121,9 +128,6 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       returns (bool, bytes memory)
    {
       Round storage current = rounds[currentRoundId];
-      console.log(block.timestamp);
-      console.log(collectTime + current.startTime);
-
       if (
          currentRoundStatus == RoundStatus.collecting &&
          collectTime + current.startTime <=block.timestamp
@@ -175,15 +179,16 @@ contract Lottery is Initializable, AccessControlUpgradeable {
 
    function claimLiquidity() internal {
       Round storage current = rounds[currentRoundId];
-      uint256 total = 1050 * 10**8; // change this for ilendingPool withdraw
+      uint256 total = 1050 * 10**18; // change this for ilendingPool withdraw
       uint256 liquidity = total - current.funds;
 
       current.reward = liquidity - (liquidity * fee) / 100;
-
    }
 
    function generateLotteryNumber() internal {
       winningTicket = 100000000;
+
+      vrf2Consumer.requestRandomWords(rounds[currentRoundId].tickets.length);
    }
 
    function _finishRound() internal {
@@ -215,5 +220,14 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    function getParticipantFunds(uint roundId) public view returns(uint) {
       require(roundId < rounds.length, "Specified round not found");
       return rounds[roundId].participantFunds[msg.sender];
+   }
+
+   function setVrfConsumer(VRFv2Consumer _consumer) public {
+      vrf2Consumer = _consumer;
+   }
+
+   function setWinningTicket(uint _winner) public {
+      require(msg.sender == address(vrf2Consumer), "tx sender is not the allowed vrf consumer");
+      winningTicket = _winner;
    }
 }
