@@ -1,8 +1,15 @@
-const { expect } = require("chai");
+const {expect} = require("chai");
 const provider = waffle.provider;
 
 describe("No Loss Lottery", () => {
-   let Lottery, lottery, VRFv2Consumer, vrf2Consumer, CoordinatorMock, vrfCordinator, owner, user;
+   let Lottery,
+      lottery,
+      VRFv2Consumer,
+      vrf2Consumer,
+      CoordinatorMock,
+      vrfCordinator,
+      owner,
+      user;
    let Asset = {
       DAI: 0,
       USDC: 1,
@@ -17,29 +24,35 @@ describe("No Loss Lottery", () => {
 
    const subId = 1;
 
-
    before(async () => {
       await hre.network.provider.request({
          method: "hardhat_impersonateAccount",
          params: [process.env.PUBLIC_KEY],
-       });
-
+      });
 
       Lottery = await ethers.getContractFactory("LotteryTest");
-      VRFv2Consumer = await ethers.getContractFactory("VRFv2Consumer");
-      CoordinatorMock = await ethers.getContractFactory("CoordinatorMock");
+      VRFv2Consumer = await ethers.getContractFactory(
+         "VRFv2Consumer"
+      );
+      CoordinatorMock = await ethers.getContractFactory(
+         "CoordinatorMock"
+      );
    });
 
    beforeEach(async () => {
       [owner, user] = await ethers.getSigners();
       vrfCordinator = await CoordinatorMock.deploy(0, 0);
-      vrf2Consumer = await VRFv2Consumer.deploy(subId, vrfCordinator.address);
-      lottery = await upgrades.deployProxy(Lottery, [vrf2Consumer.address]);
+      vrf2Consumer = await VRFv2Consumer.deploy(
+         subId,
+         vrfCordinator.address
+      );
+      lottery = await upgrades.deployProxy(Lottery, [
+         vrf2Consumer.address,
+      ]);
 
       await vrf2Consumer.setLotteryContract(lottery.address);
       await vrfCordinator.createSubscription();
       await vrfCordinator.fundSubscription(subId, 100000);
-
    });
 
    describe("Deployment", () => {
@@ -56,9 +69,13 @@ describe("No Loss Lottery", () => {
             value: ethers.utils.parseEther("1"),
          });
 
-         expect(await lottery.getTicketOwner(1)).to.equal(owner.address);
+         expect(await lottery.getTicketOwner(1)).to.equal(
+            owner.address
+         );
 
-         expect(await lottery.getTicketOwner(10)).to.equal(owner.address);
+         expect(await lottery.getTicketOwner(10)).to.equal(
+            owner.address
+         );
 
          expect(await lottery.getParticipantFunds(0)).to.above(0);
 
@@ -78,15 +95,17 @@ describe("No Loss Lottery", () => {
 
       it("Should not allow to participate when round status is finished", async () => {
          await lottery.finishRound();
-         await expect(lottery.participate(10, Asset.DAI)).to.be.revertedWith(
+         await expect(
+            lottery.participate(10, Asset.DAI)
+         ).to.be.revertedWith(
             "Cannot participate, round status is finished"
          );
       });
 
       it("Should not allow to participate if there is not sufficient allowance", async () => {
-         await expect(lottery.participate(10, Asset.ETH)).to.be.revertedWith(
-            "Token allowance is too low"
-         );
+         await expect(
+            lottery.participate(10, Asset.ETH)
+         ).to.be.revertedWith("Token allowance is too low");
       });
    });
 
@@ -98,7 +117,9 @@ describe("No Loss Lottery", () => {
       it("Should check round status and perform functions property", async () => {
          let result;
 
-         await network.provider.send("evm_increaseTime", [collectTime]);
+         await network.provider.send("evm_increaseTime", [
+            collectTime,
+         ]);
          await network.provider.send("evm_mine");
 
          result = await lottery.checkUpkeep("0x");
@@ -120,7 +141,10 @@ describe("No Loss Lottery", () => {
 
          if (result) {
             await lottery.performUpkeep("0x");
-            await vrfCordinator.fulfillRandomWords(1, vrf2Consumer.address);
+            await vrfCordinator.fulfillRandomWords(
+               1,
+               vrf2Consumer.address
+            );
          }
 
          expect(await lottery.currentRoundStatus()).to.equal(
@@ -139,26 +163,28 @@ describe("No Loss Lottery", () => {
       });
    });
 
-   describe("Generate winning number", ()=> {
-
-      beforeEach(async()=> {
+   describe("Generate winning number", () => {
+      beforeEach(async () => {
          user = await ethers.getSigners(process.env.PUBLIC_KEY);
       });
 
-      it("Should allow to generate a random winning ticket", async()=> {
+      it("Should allow to generate a random winning ticket", async () => {
          let ticketsAmount = 10;
 
-         await lottery.participate(ticketsAmount, Asset.ETH, {value: ethers.utils.parseEther("1")});
+         await lottery.participate(ticketsAmount, Asset.ETH, {
+            value: ethers.utils.parseEther("1"),
+         });
          await lottery.investFunds();
          await lottery.finishRound();
-         await vrfCordinator.fulfillRandomWords(1, vrf2Consumer.address);
+         await vrfCordinator.fulfillRandomWords(
+            1,
+            vrf2Consumer.address
+         );
 
-         expect(await lottery.winningTicket())
-         .to
-         .be
-         .within(0, ticketsAmount);
-
-
+         expect(await lottery.winningTicket()).to.be.within(
+            0,
+            ticketsAmount
+         );
       });
    });
 });
