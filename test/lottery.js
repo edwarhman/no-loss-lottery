@@ -76,6 +76,12 @@ describe("No Loss Lottery", () => {
          let round = await lottery.rounds(0);
 
          expect(round[3]).to.equal(Asset.USDC);
+			expect(await lottery.tokenAddress(Asset.ETH))
+				.to
+				.equal(tokenAddresses[Asset.ETH]);
+			expect(await lottery.assetPoolAddress(Asset.ETH))
+				.to
+				.equal(poolsAddresses[Asset.ETH]);
       });
    });
 

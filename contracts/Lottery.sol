@@ -19,8 +19,8 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    Round[] public rounds;
    uint256 public fee;
    VRFv2Consumer public vrf2Consumer;
-   mapping(Asset => address) tokenAddress;
-   mapping(Asset => address) assetPoolAddress;
+   mapping(Asset => address) public tokenAddress;
+   mapping(Asset => address) public assetPoolAddress;
 
    struct Round {
       uint256 startTime;
