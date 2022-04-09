@@ -20,6 +20,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    uint256 public fee;
    VRFv2Consumer public vrf2Consumer;
    mapping(Asset => address) public tokenAddress;
+	mapping(Asset => uint) public tokenDecimals;
    address public assetPoolAddress;
 
    struct Round {
@@ -48,6 +49,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    function initialize(
       VRFv2Consumer _consumer,
       address[] memory tokens,
+		uint[] memory decimals,
       address poolAddress
    ) public initializer {
       collectTime = 2 days;
@@ -57,6 +59,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       vrf2Consumer = _consumer;
       for (uint256 i = 0; i < tokens.length; i++) {
          tokenAddress[Asset(i)] = tokens[i];
+			tokenDecimals[Asset(i)] = decimals[i];
       }
 
       assetPoolAddress = poolAddress;
