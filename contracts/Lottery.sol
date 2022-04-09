@@ -3,6 +3,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./interfaces/ILendingPool.sol";
+import "./interfaces/IStableSwapPool.sol";
 import "hardhat/console.sol";
 import "./VRFv2Consumer.sol";
 
@@ -20,8 +21,10 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    uint256 public fee;
    VRFv2Consumer public vrf2Consumer;
    mapping(Asset => address) public tokenAddress;
-   address public assetPoolAddress;
-
+	mapping(Asset => uint) public tokenDecimals;
+   address public lendingPoolAddress;
+	address public stableSwapAddress;
+	mapping(Asset => int128) public assetToInt128;
    struct Round {
       uint256 startTime;
       uint256 funds;
@@ -48,18 +51,25 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    function initialize(
       VRFv2Consumer _consumer,
       address[] memory tokens,
-      address poolAddress
+		uint[] memory decimals,
+      address _lendingPoolAddress,
+		address _stableSwapAddress
    ) public initializer {
       collectTime = 2 days;
       investTime = 5 days;
       _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
       vrf2Consumer = _consumer;
+		int128 j = 0;
       for (uint256 i = 0; i < tokens.length; i++) {
          tokenAddress[Asset(i)] = tokens[i];
+			tokenDecimals[Asset(i)] = decimals[i];
+			assetToInt128[Asset(i)] = j;
+			j++;
       }
 
-      assetPoolAddress = poolAddress;
+      lendingPoolAddress = _lendingPoolAddress;
+		stableSwapAddress = _stableSwapAddress;
 
       rounds.push();
       rounds[0].startTime = block.timestamp;
@@ -109,7 +119,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
          //transferFrom(msg.sender, totalToPay);
       }
       if (payMethod != round.rewardAsset) {
-         totalToPay = swapTokens(payMethod, totalToPay);
+         totalToPay = _swapTokens(payMethod, round.rewardAsset, totalToPay);
       }
 
       round.funds += totalToPay;
@@ -193,106 +203,123 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       paused = _paused;
    }
 
-   function swapTokens(Asset from, uint256 amountIn)
+   function _swapTokens(Asset from,Asset to, uint256 amountIn)
       public
       returns (uint256)
    {
-      return amountIn;
-   }
+		uint expected;
+		uint prev; 
+		uint received;
+		if(from == Asset.ETH) {
+			received = amountIn;
 
-   function investFunds() public {
-      Round storage current = rounds[currentRoundId];
-      Asset asset = current.rewardAsset;
+		} else {
+			prev = IERC20(tokenAddress[to]).balanceOf(address(this));
+			IERC20(tokenAddress[from]).approve(
+				stableSwapAddress,
+				amountIn
+			);
+			expected =IStableSwapPool(stableSwapAddress).get_dy(assetToInt128[from], assetToInt128[to], amountIn);
+			IStableSwapPool(stableSwapAddress).exchange(assetToInt128[from], assetToInt128[to], amountIn, expected * 99 / 100);
 
-      currentRoundStatus = RoundStatus.investing;
-      IERC20(tokenAddress[asset]).approve(
-         assetPoolAddress,
-         current.funds
-      );
-      ILendingPool(assetPoolAddress).deposit(
-         tokenAddress[asset],
-         current.funds,
-         address(this),
-         0
-      );
-   }
+			received = IERC20(tokenAddress[to]).balanceOf(address(this)) - prev;
+		}
+		return received;
+	}
 
-   function claimLiquidity() internal {
-      Round storage current = rounds[currentRoundId];
-      Asset asset = current.rewardAsset;
-      uint256 maxUint = 2**256 - 1;
-      uint256 total;
-      (uint256 totalCollateral, , , , , ) = ILendingPool(
-         assetPoolAddress
-      ).getUserAccountData(address(this));
-      total = ILendingPool(assetPoolAddress).withdraw(
-         tokenAddress[asset],
-         maxUint,
-         address(this)
-      ); // need to add total assignment
-      uint256 liquidity = total - current.funds;
+	function investFunds() public {
+		Round storage current = rounds[currentRoundId];
+		Asset asset = current.rewardAsset;
 
-      current.reward = liquidity - (liquidity * fee) / 100;
-   }
+		currentRoundStatus = RoundStatus.investing;
+		IERC20(tokenAddress[asset]).approve(
+			lendingPoolAddress,
+			current.funds
+		);
+		ILendingPool(lendingPoolAddress).deposit(
+			tokenAddress[asset],
+			current.funds,
+			address(this),
+			0
+		);
+	}
 
-   function generateLotteryNumber() internal {
-      winningTicket = 100000000;
+	function claimLiquidity() internal {
+		Round storage current = rounds[currentRoundId];
+		Asset asset = current.rewardAsset;
+		uint256 maxUint = 2**256 - 1;
+		uint256 total;
+		(uint256 totalCollateral, , , , , ) = ILendingPool(
+			lendingPoolAddress
+		).getUserAccountData(address(this));
+		total = ILendingPool(lendingPoolAddress).withdraw(
+			tokenAddress[asset],
+			maxUint,
+			address(this)
+		); // need to add total assignment
+		uint256 liquidity = total - current.funds;
 
-      vrf2Consumer.requestRandomWords(
-         rounds[currentRoundId].tickets.length
-      );
-   }
+		current.reward = liquidity - (liquidity * fee) / 100;
+	}
 
-   function _finishRound() internal {
-      claimLiquidity();
-      generateLotteryNumber();
+	function generateLotteryNumber() internal {
+		winningTicket = 100000000;
 
-      currentRoundStatus = RoundStatus.finished;
-   }
+		vrf2Consumer.requestRandomWords(
+			rounds[currentRoundId].tickets.length
+		);
+	}
 
-   function _startNextRound() internal {
-      currentRoundStatus = RoundStatus.collecting;
-   }
+	function _finishRound() internal {
+		claimLiquidity();
+		generateLotteryNumber();
 
-   function _setWinner() internal {
-      Round storage current = rounds[currentRoundId];
-      //current.winner = current.tickets[winningTicket];
-   }
+		currentRoundStatus = RoundStatus.finished;
+	}
 
-   function getPrice(Asset asset) internal returns (uint256) {
-      return asset == Asset.ETH ? 27 * 10**6 : 1056993;
-   }
+	function _startNextRound() internal {
+		currentRoundStatus = RoundStatus.collecting;
+	}
 
-   function getTicketOwner(uint256 ticket)
-      public
-      view
-      returns (address)
-   {
-      require(
-         ticket < rounds[currentRoundId].tickets.length,
-         "Specified ticket not found"
-      );
-      return rounds[currentRoundId].tickets[ticket];
-   }
+	function _setWinner() internal {
+		Round storage current = rounds[currentRoundId];
+		//current.winner = current.tickets[winningTicket];
+	}
 
-   function getParticipantFunds(uint256 roundId)
-      public
-      view
-      returns (uint256)
-   {
-      require(roundId < rounds.length, "Specified round not found");
-      return rounds[roundId].participantFunds[msg.sender];
-   }
+	function getPrice(Asset asset) internal returns (uint256) {
+		return asset == Asset.ETH ? 27 * 10**6 : 1056993;
+	}
 
-   function setVrfConsumer(VRFv2Consumer _consumer) public {
-      vrf2Consumer = _consumer;
-   }
+	function getTicketOwner(uint256 ticket)
+	public
+	view
+	returns (address)
+	{
+		require(
+			ticket < rounds[currentRoundId].tickets.length,
+			"Specified ticket not found"
+		);
+		return rounds[currentRoundId].tickets[ticket];
+	}
 
-   function setWinningTicket(uint256 _winner) public {
-      require(
-         msg.sender == address(vrf2Consumer),
-         "tx sender is not the allowed vrf consumer"
-      );
-      winningTicket = _winner;
-   }
+	function getParticipantFunds(uint256 roundId)
+	public
+	view
+	returns (uint256)
+	{
+		require(roundId < rounds.length, "Specified round not found");
+		return rounds[roundId].participantFunds[msg.sender];
+	}
+
+	function setVrfConsumer(VRFv2Consumer _consumer) public {
+		vrf2Consumer = _consumer;
+	}
+
+	function setWinningTicket(uint256 _winner) public {
+		require(
+			msg.sender == address(vrf2Consumer),
+			"tx sender is not the allowed vrf consumer"
+		);
+		winningTicket = _winner;
+	}
 }
