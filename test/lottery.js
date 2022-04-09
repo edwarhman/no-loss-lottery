@@ -8,6 +8,9 @@ describe("No Loss Lottery", () => {
       vrf2Consumer,
       CoordinatorMock,
       vrfCordinator,
+      tokenContract,
+      RouterV2,
+      routerV2,
       owner,
       user;
    let Asset = {
@@ -24,25 +27,21 @@ describe("No Loss Lottery", () => {
 
    const subId = 1;
 
-	const tokenAddresses = [
-		"0x6B175474E89094C44Da98b954EedeAC495271d0F",
-		"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
-		"0xdAC17F958D2ee523a2206206994597C13D831ec7",
-		"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
-
-	];
-	const poolsAddresses = [
-		"0x028171bCA77440897B824Ca71D1c56caC55b68A3",
-		"0xBcca60bB61934080951369a648Fb03DF4F96263C",
-		"0x3Ed3B47Dd13EC9a98b44e6204A523E766B225811",
-		"0x030bA81f1c18d280636F32af80b9AAd02Cf0854e"
-	];
+   const tokenAddresses = [
+      "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+      "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+      "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",
+   ];
+   const poolAddress = "0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9";
+   const uniswapRouterAddress =
+      "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 
    before(async () => {
-      await hre.network.provider.request({
+      /*await hre.network.provider.request({
          method: "hardhat_impersonateAccount",
-         params: [process.env.PUBLIC_KEY],
-      });
+         params: [tokenCreatorAddresses[Asset.USDC]],
+		});*/
 
       Lottery = await ethers.getContractFactory("LotteryTest");
       VRFv2Consumer = await ethers.getContractFactory(
@@ -51,6 +50,7 @@ describe("No Loss Lottery", () => {
       CoordinatorMock = await ethers.getContractFactory(
          "CoordinatorMock"
       );
+      RouterV2 = await ethers.getContractFactory("V2Router");
    });
 
    beforeEach(async () => {
@@ -62,13 +62,28 @@ describe("No Loss Lottery", () => {
       );
       lottery = await upgrades.deployProxy(Lottery, [
          vrf2Consumer.address,
-			tokenAddresses,
-			poolsAddresses
+         tokenAddresses,
+         poolAddress,
       ]);
+      tokenContract = await ethers.getContractAt(
+         "IERC20",
+         tokenAddresses[Asset.USDC]
+      );
+      routerV2 = await RouterV2.deploy(uniswapRouterAddress);
 
       await vrf2Consumer.setLotteryContract(lottery.address);
       await vrfCordinator.createSubscription();
       await vrfCordinator.fundSubscription(subId, 100000);
+      await routerV2.swapEth(
+         0,
+         [tokenAddresses[Asset.ETH], tokenAddresses[Asset.USDC]],
+         owner.address,
+         {value: ethers.utils.parseEther("20")}
+      );
+      await tokenContract.transfer(
+         lottery.address,
+         await tokenContract.balanceOf(owner.address)
+      );
    });
 
    describe("Deployment", () => {
@@ -76,12 +91,12 @@ describe("No Loss Lottery", () => {
          let round = await lottery.rounds(0);
 
          expect(round[3]).to.equal(Asset.USDC);
-			expect(await lottery.tokenAddress(Asset.ETH))
-				.to
-				.equal(tokenAddresses[Asset.ETH]);
-			expect(await lottery.assetPoolAddress(Asset.ETH))
-				.to
-				.equal(poolsAddresses[Asset.ETH]);
+         expect(await lottery.tokenAddress(Asset.ETH)).to.equal(
+            tokenAddresses[Asset.ETH]
+         );
+         expect(await lottery.assetPoolAddress()).to.equal(
+            poolAddress
+         );
       });
    });
 
@@ -105,6 +120,9 @@ describe("No Loss Lottery", () => {
       });
 
       it("Should allow the user to participate in the next lottery if current is investing funds", async () => {
+         await lottery.participate(3, Asset.ETH, {
+            value: ethers.utils.parseEther("1"),
+         });
          await lottery.investFunds();
          await lottery.participate(10, Asset.ETH, {
             value: ethers.utils.parseEther("1"),
@@ -116,6 +134,10 @@ describe("No Loss Lottery", () => {
       });
 
       it("Should not allow to participate when round status is finished", async () => {
+         await lottery.participate(3, Asset.ETH, {
+            value: ethers.utils.parseEther("1"),
+         });
+         await lottery.investFunds();
          await lottery.finishRound();
          await expect(
             lottery.participate(10, Asset.DAI)
@@ -138,6 +160,10 @@ describe("No Loss Lottery", () => {
 
       it("Should check round status and perform functions property", async () => {
          let result;
+
+         await lottery.participate(3, Asset.ETH, {
+            value: ethers.utils.parseEther("1"),
+         });
 
          await network.provider.send("evm_increaseTime", [
             collectTime,

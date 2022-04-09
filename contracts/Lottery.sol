@@ -2,7 +2,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@aave/core-v3/contracts/interfaces/IPool.sol";
+import "./interfaces/ILendingPool.sol";
 import "hardhat/console.sol";
 import "./VRFv2Consumer.sol";
 
@@ -20,7 +20,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    uint256 public fee;
    VRFv2Consumer public vrf2Consumer;
    mapping(Asset => address) public tokenAddress;
-   mapping(Asset => address) public assetPoolAddress;
+   address public assetPoolAddress;
 
    struct Round {
       uint256 startTime;
@@ -45,16 +45,21 @@ contract Lottery is Initializable, AccessControlUpgradeable {
       ETH
    }
 
-   function initialize(VRFv2Consumer _consumer, address[] memory tokens, address[] memory pools) public initializer {
+   function initialize(
+      VRFv2Consumer _consumer,
+      address[] memory tokens,
+      address poolAddress
+   ) public initializer {
       collectTime = 2 days;
       investTime = 5 days;
       _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
 
       vrf2Consumer = _consumer;
-		for(uint i = 0; i < tokens.length; i++) {
-			tokenAddress[Asset(i)] = tokens[i];
-			assetPoolAddress[Asset(i)] = pools[i];
-		}
+      for (uint256 i = 0; i < tokens.length; i++) {
+         tokenAddress[Asset(i)] = tokens[i];
+      }
+
+      assetPoolAddress = poolAddress;
 
       rounds.push();
       rounds[0].startTime = block.timestamp;
@@ -196,24 +201,35 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    }
 
    function investFunds() public {
-		Round storage current = rounds[currentRoundId];
-		Asset asset = current.rewardAsset;
+      Round storage current = rounds[currentRoundId];
+      Asset asset = current.rewardAsset;
 
       currentRoundStatus = RoundStatus.investing;
-
-		IERC20(tokenAddress[asset]).approve(assetPoolAddress[asset], current.funds);
-		IPool(assetPoolAddress[asset]).supply(tokenAddress[asset], current.funds, msg.sender, 0);
+      IERC20(tokenAddress[asset]).approve(
+         assetPoolAddress,
+         current.funds
+      );
+      ILendingPool(assetPoolAddress).deposit(
+         tokenAddress[asset],
+         current.funds,
+         address(this),
+         0
+      );
    }
 
    function claimLiquidity() internal {
       Round storage current = rounds[currentRoundId];
-		Asset asset = current.rewardAsset;
-		uint maxUint = 2**256 - 1;
-
-		(uint totalCollateral,,,,,) = IPool(assetPoolAddress[asset]).getUserAccountData(msg.sender);
-		IPool(assetPoolAddress[asset]).withdraw(tokenAddress[asset], maxUint, msg.sender); 
-      
-		uint256 total = 1050 * 10**18; // change this for ilendingPool withdraw
+      Asset asset = current.rewardAsset;
+      uint256 maxUint = 2**256 - 1;
+      uint256 total;
+      (uint256 totalCollateral, , , , , ) = ILendingPool(
+         assetPoolAddress
+      ).getUserAccountData(address(this));
+      total = ILendingPool(assetPoolAddress).withdraw(
+         tokenAddress[asset],
+         maxUint,
+         address(this)
+      ); // need to add total assignment
       uint256 liquidity = total - current.funds;
 
       current.reward = liquidity - (liquidity * fee) / 100;
@@ -244,7 +260,7 @@ contract Lottery is Initializable, AccessControlUpgradeable {
    }
 
    function getPrice(Asset asset) internal returns (uint256) {
-      return asset == Asset.ETH ? 27 * 10**13 : 100056993;
+      return asset == Asset.ETH ? 27 * 10**6 : 1056993;
    }
 
    function getTicketOwner(uint256 ticket)

@@ -7,10 +7,16 @@ require("dotenv").config();
 module.exports = {
    networks: {
       hardhat: {
-         /*        forking: {
-            url: process.env.ALCHEMY_KEY,
-         }*/
+         forking: {
+            url: process.env.RPC_URL,
+         },
       },
    },
-   solidity: "0.8.10",
+   solidity: {
+      compilers: [
+         {
+            version: "0.8.10",
+         },
+      ],
+   },
 };
