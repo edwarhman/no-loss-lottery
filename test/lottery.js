@@ -8,7 +8,8 @@ describe("No Loss Lottery", () => {
       vrf2Consumer,
       CoordinatorMock,
       vrfCordinator,
-      tokenContract,
+      usdcCoin,
+		daiCoin,
       RouterV2,
       routerV2,
 		swapPool3,
@@ -43,7 +44,7 @@ describe("No Loss Lottery", () => {
 		6,
 		18
 	];
-   const poolAddress = "0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9";
+   const lendingPoolAddress = "0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9";
    const uniswapRouterAddress =
       "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D";
 	const swapPool3Address = "0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7";
@@ -70,9 +71,10 @@ describe("No Loss Lottery", () => {
          vrf2Consumer.address,
          tokenAddresses,
 			tokenDecimals,
-         poolAddress,
+         lendingPoolAddress,
+			swapPool3Address,
       ]);
-      tokenContract = await ethers.getContractAt(
+      usdcCoin = await ethers.getContractAt(
          "IERC20",
          tokenAddresses[Asset.USDC]
       );
@@ -81,6 +83,7 @@ describe("No Loss Lottery", () => {
 			swapPool3Address
 		);
       routerV2 = await RouterV2.deploy(uniswapRouterAddress);
+		daiCoin = await ethers.getContractAt("IERC20", tokenAddresses[Asset.DAI]);
 
       await vrf2Consumer.setLotteryContract(lottery.address);
       await vrfCordinator.createSubscription();
@@ -91,9 +94,9 @@ describe("No Loss Lottery", () => {
          owner.address,
          {value: ethers.utils.parseEther("20")}
       );
-      await tokenContract.transfer(
+      await usdcCoin.transfer(
          lottery.address,
-         await tokenContract.balanceOf(owner.address)
+         await usdcCoin.balanceOf(owner.address)
       );
    });
 
@@ -105,21 +108,28 @@ describe("No Loss Lottery", () => {
 				owner.address,
 				{value: ethers.utils.parseEther("20")}
 			);
-			let daiCoin = await ethers.getContractAt("IERC20", tokenAddresses[Asset.DAI]);
+			console.log("router ran well");
 			
 			let expected = await swapPool3.get_dy(1, 0, 10000000);
 			console.log(expected);
 			console.log(await swapPool3.get_dy(0, 1, anEther));
-			await tokenContract.approve(swapPool3Address, 10000000);
+			await usdcCoin.approve(swapPool3Address, 10000000);
 			await swapPool3.exchange(1, 0, 10000000, expected.mul(99).div(100));
 			console.log(expected.mul(99).div(100));
 			let result = await daiCoin.balanceOf(owner.address);
 			expect(result).to.be.within(1, expected);
 
 		});
+		it("Should swap tokens inside lottery contract", async()=> {
+			console.log(await daiCoin.balanceOf(lottery.address));
+			console.log(await usdcCoin.balanceOf(lottery.address));
+			await lottery.swapTokens(1, 0, 10000000);
+			console.log(await daiCoin.balanceOf(lottery.address));
+
+		});
 	});
 
-	xdescribe("Deployment", () => {
+	describe("Deployment", () => {
 		it("Should initialize first round correctly", async () => {
 			let round = await lottery.rounds(0);
 
@@ -127,13 +137,13 @@ describe("No Loss Lottery", () => {
 			expect(await lottery.tokenAddress(Asset.ETH)).to.equal(
 				tokenAddresses[Asset.ETH]
 			);
-			expect(await lottery.assetPoolAddress()).to.equal(
-				poolAddress
+			expect(await lottery.lendingPoolAddress()).to.equal(
+				lendingPoolAddress
 			);
 		});
 	});
 
-	xdescribe("Participate function assertions", () => {
+	describe("Participate function assertions", () => {
 		it("Should allow to participate in the lottery", async () => {
 			await lottery.participate(10, Asset.ETH, {
 				value: ethers.utils.parseEther("1"),
@@ -186,7 +196,7 @@ describe("No Loss Lottery", () => {
 		});
 	});
 
-	xdescribe("Upkeep functions assertions", () => {
+	describe("Upkeep functions assertions", () => {
 		let day = 60 * 60 * 24;
 		let collectTime = day * 2;
 		let investTime = day * 5;
@@ -244,7 +254,7 @@ describe("No Loss Lottery", () => {
 		});
 	});
 
-	xdescribe("Generate winning number", () => {
+	describe("Generate winning number", () => {
 		beforeEach(async () => {
 			user = await ethers.getSigners(process.env.PUBLIC_KEY);
 		});
